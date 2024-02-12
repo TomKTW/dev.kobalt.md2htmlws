@@ -36,17 +36,31 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
+import kotlinx.coroutines.*
+import kotlinx.serialization.json.*
 import java.util.*
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
+import kotlin.io.path.Path
+import kotlin.io.path.readText
 
-fun main(args: Array<String>) {
+suspend fun main(args: Array<String>) {
     // Apply timezone of runtime to UTC.
     TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+
     // Parse given arguments.
     val parser = ArgParser(
         programName = "server"
     )
+    val list = (0..9).map {
+        parser.option(
+            type = ArgType.Int,
+            fullName = "port$it",
+            shortName = "pt$it",
+            description = "Port to host the server at"
+        )
+    }
+
     val serverPort by parser.option(
         type = ArgType.Int,
         fullName = "port",
@@ -60,36 +74,51 @@ fun main(args: Array<String>) {
         description = "Host value (127.0.0.1 for private, 0.0.0.0 for public access)"
     )
     parser.parse(args)
-    // Prepare server if port and host are defined.
-    ifLet(serverPort, serverHost) { port, host ->
-        embeddedServer(CIO, port, host) {
-            install(ForwardedHeaders)
-            install(DefaultHeaders)
-            install(CallLogging)
-            install(Compression)
-            install(StoragePlugin)
-            install(IgnoreTrailingSlash)
-            install(CachingHeaders) {
-                options { _, _ -> CachingOptions(CacheControl.MaxAge(maxAgeSeconds = 3600)) }
-            }
-            install(StatusPages) {
-                exception<Throwable> { call, cause -> cause.printStackTrace() }
-            }
-            install(Routing) {
-                route("{path...}") {
-                    get {
-                        call.parameters.getAll("path")?.joinToString("/")?.let { path ->
-                            application.storage.fromPath(path)?.toFile()?.let { call.respondFile(it) }
-                        } ?: call.respond(HttpStatusCode.NotFound)
+
+    Json.parseToJsonElement(Path("./config.json").readText()).jsonArray.mapNotNull { element ->
+        ifLet(
+            element.jsonObject["port"]?.jsonPrimitive?.intOrNull,
+            element.jsonObject["host"]?.jsonPrimitive?.contentOrNull,
+            element.jsonObject["path"]?.jsonPrimitive?.contentOrNull,
+            element.jsonObject["name"]?.jsonPrimitive?.contentOrNull
+        ) { port, host, path, name ->
+            GlobalScope.async(
+                context = Dispatchers.IO + NonCancellable,
+                start = CoroutineStart.LAZY
+            ) {
+                embeddedServer(CIO, port, host) {
+                    install(ForwardedHeaders)
+                    install(DefaultHeaders)
+                    install(CallLogging)
+                    install(Compression)
+                    install(StoragePlugin) {
+                        this.path = path
+                        this.name = name
                     }
+                    install(IgnoreTrailingSlash)
+                    install(CachingHeaders) {
+                        options { _, _ -> CachingOptions(CacheControl.MaxAge(maxAgeSeconds = 0)) }
+                    }
+                    install(StatusPages) {
+                        exception<Throwable> { call, cause -> cause.printStackTrace() }
+                    }
+                    install(Routing) {
+                        route("{path...}") {
+                            get {
+                                call.parameters.getAll("path")?.joinToString("/")?.let { path ->
+                                    application.storage.fromPath(path)?.toFile()?.let { call.respondFile(it) }
+                                } ?: call.respond(HttpStatusCode.NotFound)
+                            }
+                        }
+                    }
+                }.also {
+                    Runtime.getRuntime().addShutdownHook(thread(start = false) {
+                        it.stop(0, 10, TimeUnit.SECONDS)
+                    })
+                }.also {
+                    it.start(true)
                 }
             }
-        }.also {
-            Runtime.getRuntime().addShutdownHook(thread(start = false) {
-                it.stop(0, 10, TimeUnit.SECONDS)
-            })
-        }.also {
-            it.start(true)
         }
-    }
+    }.awaitAll()
 }

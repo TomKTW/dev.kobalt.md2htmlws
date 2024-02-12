@@ -21,7 +21,8 @@ package dev.kobalt.md2htmlwebserver.jvm.storage
 /** Configuration for storage repository. */
 class StorageConfiguration(
     /** Path location of content to be stored. */
-    var path: String? = null
+    var path: String? = null,
+    var name: String? = null
 ) {
 
     companion object {

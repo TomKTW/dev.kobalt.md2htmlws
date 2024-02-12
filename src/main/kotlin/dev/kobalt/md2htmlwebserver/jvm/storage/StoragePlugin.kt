@@ -26,6 +26,6 @@ val StoragePlugin = createApplicationPlugin(
     name = StorageConfiguration.NAME,
     createConfiguration = ::StorageConfiguration
 ) {
-    application.attributes.put(AttributeKey(StorageConfiguration.NAME), StorageRepository(pluginConfig.path ?: "./storage"))
+    application.attributes.put(AttributeKey(StorageConfiguration.NAME), StorageRepository(pluginConfig.path!!, pluginConfig.name!!))
 }
 

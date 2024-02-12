@@ -36,7 +36,8 @@ import kotlin.io.path.*
 
 /** Repository that provides access to storage that will be used to render content. */
 class StorageRepository(
-    path: String
+    private val path: String,
+    private val name: String
 ) {
 
     /** Main path object that will be used as root for accessing content. It will be created if it doesn't exist. */
@@ -88,8 +89,10 @@ class StorageRepository(
             val matchesHtmlName = path.name == "index.html"
             // Check if path name matches existing JSON properties file.
             val matchesJsonName = path.name == "index.json"
+            // Check if path name matches existing HTML template file.
+            val matchesTemplateName = path.name == "template.html"
             // Return file if it doesn't match files for rendering. Otherwise, throw an exception.
-            if (!matchesMarkdownName && !matchesHtmlName && !matchesJsonName) {
+            if (!matchesMarkdownName && !matchesHtmlName && !matchesJsonName && !matchesTemplateName) {
                 return path
             } else {
                 throw Exception()
@@ -160,91 +163,12 @@ class StorageRepository(
         description: String,
         content: String
     ): String {
-        return buildString {
-            append("<!DOCTYPE html>\n")
-            appendHTML().html {
-                head {
-                    title(title)
-                    meta(name = "description", content = description)
-                    meta {
-                        this.httpEquiv = "Content-Type"
-                        this.content = "text/html;charset=UTF-8"
-                    }
-                    meta {
-                        this.name = "viewport"
-                        this.content = "width=device-width, initial-scale=1.0, shrink-to-fit=no"
-                    }
-                    link {
-                        this.rel = "icon"
-                        this.type = "/favicon.ico"
-                    }
-                    link {
-                        this.rel = "stylesheet"
-                        this.href = "/style.css"
-                    }
-                }
-                body {
-                    header {
-                        h1 {
-                            a("/", classes = "nav-item-title") {
-                                this.attributes["title"] = "Project"
-                                text("Project")
-                            }
-                        }
-                        hr { }
-                        nav {
-                            ul {
-                                li {
-                                    a("/", classes = "nav-item-exit") {
-                                        this.attributes["title"] =
-                                            "Exit"; text("Exit")
-                                    }
-                                }
-                                li {
-                                    a("/", classes = "nav-item-index") {
-                                        this.attributes["title"] =
-                                            "Index"; text("Index")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    hr { id = "top" }
-                    main {
-                        article {
-                            unsafe {
-                                raw(content)
-                            }
-                        }
-                    }
-                    hr { }
-                    footer {
-                        nav {
-                            ul {
-                                li {
-                                    a("./..", classes = "nav-item-back") {
-                                        this.attributes["title"] =
-                                            "Back"; text("Back")
-                                    }
-                                }
-                                li {
-                                    a("#top", classes = "nav-item-top") {
-                                        this.attributes["title"] =
-                                            "Top"; text("Top")
-                                    }
-                                }
-                            }
-                        }
-                        hr { }
-                        p {
-                            a("/legal/", classes = "nav-item-legal") {
-                                this.attributes["title"] = "Legal"; text("Legal")
-                            }
-                        }
-                    }
-                }
-            }.toString()
-        }.let { Jsoup.parse(it).toString() }
+        return rootPath.resolve("template.html").requireIsLocatedIn(rootPath).readText()
+            .replace("\$name\$", name)
+            .replace("\$title\$", title)
+            .replace("\$description\$", description)
+            .replace("\$content\$", content)
+            .let { Jsoup.parse(it).toString() }
     }
 
 }

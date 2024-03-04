@@ -16,9 +16,7 @@ java -jar server.jar --configPath [CONFIG_PATH]
 ## Options
 
 ```
--pt, --configPath [CONFIG_PATH] - Port to host the server at
-
--ht, --host [SERVER_HOST] - Host value (127.0.0.1 for private, 0.0.0.0 for public access)
+-pt, --configPath [CONFIG_PATH] - Path of configuration JSON file
 ```
 
 ## Example

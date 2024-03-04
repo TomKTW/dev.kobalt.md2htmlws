@@ -18,7 +18,7 @@
 
 package dev.kobalt.md2htmlwebserver.jvm.storage
 
-import dev.kobalt.md2htmlwebserver.jvm.extension.requireIsLocatedIn
+import dev.kobalt.md2htmlwebserver.jvm.extension.resolveAndRequireIsLocatedInCurrentPath
 import io.github.irgaly.kfswatch.KfsDirectoryWatcher
 import io.github.irgaly.kfswatch.KfsEvent
 import kotlinx.coroutines.CoroutineScope
@@ -104,7 +104,7 @@ class StorageRepository(
 
     /** Returns path of rendered HTML file from given path string value. */
     fun fromPath(pathString: String): Path? {
-        val path = rootPath.resolve(pathString).requireIsLocatedIn(rootPath)
+        val path = rootPath.resolveAndRequireIsLocatedInCurrentPath(pathString)
         // Return null if this path doesn't exist.
         if (!path.exists()) return null
         // If this is a folder, then it's assumed to be a web page to be displayed.
@@ -138,7 +138,7 @@ class StorageRepository(
 
     /** Returns path of rendered HTML file from given HTTP status code value. */
     fun fromStatus(code: Int): Path {
-        val path = statusPath.resolve(code.toString()).requireIsLocatedIn(statusPath)
+        val path = statusPath.resolveAndRequireIsLocatedInCurrentPath(code.toString())
         // Markdown content file to be rendered.
         val markdownPath = path.resolve(markdownName)
         // If markdown content file exists, proceed with rendering content. Otherwise, throw an exception.

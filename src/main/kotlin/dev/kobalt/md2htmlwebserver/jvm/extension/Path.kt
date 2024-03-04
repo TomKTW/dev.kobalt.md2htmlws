@@ -23,6 +23,9 @@ import java.nio.file.Path
 /** Returns true if the given path is parent to this path. */
 fun Path.isLocatedIn(parent: Path) = normalize().startsWith(parent.normalize())
 
-/** Throws an exception if the file is not located in parent path. */
+/** Throws an exception if the path is not located in parent path. */
 fun Path.requireIsLocatedIn(parent: Path) = takeIf { isLocatedIn(parent) }
     ?: throw Exception("File ${this.normalize()} is not located in ${parent.normalize()}.")
+
+/** Returns resolved path. Exception is thrown if the path is not located in current path as parent. */
+fun Path.resolveAndRequireIsLocatedInCurrentPath(path: String) = this.resolve(path).requireIsLocatedIn(this)

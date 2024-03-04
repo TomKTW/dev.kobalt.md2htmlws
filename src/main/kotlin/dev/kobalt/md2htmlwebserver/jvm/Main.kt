@@ -53,37 +53,22 @@ suspend fun main(args: Array<String>) {
     val parser = ArgParser(
         programName = "server"
     )
-    val list = (0..9).map {
-        parser.option(
-            type = ArgType.Int,
-            fullName = "port$it",
-            shortName = "pt$it",
-            description = "Port to host the server at"
-        )
-    }
-
-    val serverPort by parser.option(
-        type = ArgType.Int,
-        fullName = "port",
-        shortName = "pt",
-        description = "Port to host the server at"
-    )
-    val serverHost by parser.option(
+    val configPath by parser.option(
         type = ArgType.String,
-        fullName = "host",
-        shortName = "ht",
-        description = "Host value (127.0.0.1 for private, 0.0.0.0 for public access)"
+        fullName = "configPath",
+        shortName = "conf",
+        description = "Path of configuration JSON file"
     )
     parser.parse(args)
-
-    Json.parseToJsonElement(Path("./config.json").readText()).jsonArray.mapNotNull { element ->
+    val mainScope = CoroutineScope(Dispatchers.Main)
+    configPath?.let { Json.parseToJsonElement(Path(it).readText()).jsonArray }?.mapNotNull { element ->
         ifLet(
             element.jsonObject["port"]?.jsonPrimitive?.intOrNull,
             element.jsonObject["host"]?.jsonPrimitive?.contentOrNull,
             element.jsonObject["path"]?.jsonPrimitive?.contentOrNull,
             element.jsonObject["name"]?.jsonPrimitive?.contentOrNull
         ) { port, host, path, name ->
-            GlobalScope.async(
+            mainScope.async(
                 context = Dispatchers.IO + NonCancellable,
                 start = CoroutineStart.LAZY
             ) {
@@ -104,9 +89,10 @@ suspend fun main(args: Array<String>) {
                         exception<Throwable> { call, cause ->
                             cause.printStackTrace()
                             runCatching {
-                                call.application.storage.fromStatus(HttpStatusCode.InternalServerError.value).toFile().let {
-                                    call.respond(HttpStatusCode.InternalServerError, LocalFileContent(it))
-                                }
+                                call.application.storage.fromStatus(HttpStatusCode.InternalServerError.value).toFile()
+                                    .let {
+                                        call.respond(HttpStatusCode.InternalServerError, LocalFileContent(it))
+                                    }
                             }.onFailure {
                                 call.respond(HttpStatusCode.InternalServerError, "")
                             }
@@ -120,7 +106,7 @@ suspend fun main(args: Array<String>) {
                                         call.respondFile(it)
                                     }
                                 } ?: run {
-                                    application.storage.fromStatus(HttpStatusCode.NotFound.value)?.toFile()?.let {
+                                    application.storage.fromStatus(HttpStatusCode.NotFound.value).toFile().let {
                                         call.respond(HttpStatusCode.NotFound, LocalFileContent(it))
                                     }
                                 }
@@ -136,5 +122,5 @@ suspend fun main(args: Array<String>) {
                 }
             }
         }
-    }.awaitAll()
+    }?.awaitAll()
 }

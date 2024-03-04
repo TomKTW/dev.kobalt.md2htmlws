@@ -10,24 +10,47 @@ This program provides a web server that will host content from markdown files co
 ## Usage
 
 ```
-java -jar server.jar --port [SERVER_PORT] --host [SERVER_HOST]
+java -jar server.jar --configPath [CONFIG_PATH]
 ```
 
 ## Options
 
 ```
--pt, --port [SERVER_PORT] - Port to host the server at
+-pt, --configPath [CONFIG_PATH] - Port to host the server at
 
 -ht, --host [SERVER_HOST] - Host value (127.0.0.1 for private, 0.0.0.0 for public access)
 ```
 
 ## Example
 
-The following command will start a private server running at port 8080:
+With following configuration JSON file named `config.json` in same folder as program file:
 
 ```
-java -jar server.jar --port 8080 --host 127.0.0.1
+[
+  {
+    "port": 8080,
+    "host": "127.0.0.1",
+    "path": "./storage/example.com",
+    "name": "example.com"
+  },
+  {
+    "port": 8081,
+    "host": "127.0.0.1",
+    "path": "./storage/example.net",
+    "name": "example.net"
+  }
+]
 ```
+
+The following command will start two servers running at ports 8080 and 8081, monitoring contents within `./storage/example.com` and `./storage/example.com`:
+
+```
+java -jar server.jar --configPath "./config.json"
+```
+
+On initial start, each server will go through folders defined in `path` JSON value. If any folder contains markdown file named as `index.md`, it will create an HTML file named `index.html` that will contain content rendered from markdown file in HTML format. These pages will be accessible from server based on the directory name.
+
+Pages related to HTTP response codes are stored in `status` folder of given `path`. This means that server will not directly provide markdown or HTML files as content, nor it will allow accessing status pages folder.
 
 ## License
 

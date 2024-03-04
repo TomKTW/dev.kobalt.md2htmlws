@@ -151,43 +151,51 @@ class StorageRepository(
         // Return HTML rendered file.
         return htmlPath
     }
-
     /** Reads markdown content from input path and stores HTML content into output path. */
     private fun convertMarkdown(input: Path, output: Path) {
         // Prepare parser for markdown content.
         val flavour = CommonMarkFlavourDescriptor()
         val parser = MarkdownParser(flavour)
+        // Template patterns for conversion.
+        val titleTemplatePattern = "[template:title]:."
+        val descriptionTemplatePattern = "[template:description]:."
+        val dirListTemplatePattern = "[template:dirlist]:."
         // Read text from input path.
-        val contentText = input.readText().let { content ->
-            // If the template directory list pattern exists in content, convert it.
-            val templatePattern = "[template:dirlist]:."
-            if (content.contains(templatePattern)) {
-                // Get a list of path directories that contains markdown file.
-                val directoryPathList = input.parent.listDirectoryEntries().filter { listPath ->
-                    listPath.isDirectory() && listPath.resolve(markdownName).exists()
-                }.sortedBy { it.name }
-                // Combine all of those entries into a markdown string that will be processed later.
-                val result = directoryPathList.joinToString("") { listPath ->
-                    val markdownPath = listPath.resolve(markdownName)
-                    val text = markdownPath.readText()
-                    val href = listPath.name
-                    val nodes = parser.buildMarkdownTreeFromString(text)
-                    val properties = getMarkdownProperties(nodes, text)
-                    val title = properties["title"].orEmpty()
-                    val description = properties["description"].orEmpty()
-                    "# [${title}](./$href/)\n\n${description}\n\n"
-                }
-                content.replace(templatePattern, result)
-            } else {
-                content
+        var contentText = input.readText()
+        // If the template directory list pattern exists in content, convert it.
+        if (contentText.contains(dirListTemplatePattern)) {
+            // Get a list of path directories that contains markdown file.
+            val directoryPathList = input.parent.listDirectoryEntries().filter { listPath ->
+                listPath.isDirectory() && listPath.resolve(markdownName).exists()
+            }.sortedBy { it.name }
+            // Combine all of those entries into a markdown string that will be processed later.
+            val result = directoryPathList.joinToString("") { listPath ->
+                val markdownPath = listPath.resolve(markdownName)
+                val text = markdownPath.readText()
+                val href = listPath.name
+                val nodes = parser.buildMarkdownTreeFromString(text)
+                val properties = getMarkdownProperties(nodes, text)
+                val title = properties["title"].orEmpty()
+                val description = properties["description"].orEmpty()
+                "# [${title}](./$href/)\n\n${description}\n\n"
             }
+            contentText = contentText.replace(dirListTemplatePattern, result)
         }
         // Parse content text to nodes and convert it to HTML in the end for writing it to output path.
         val nodes = parser.buildMarkdownTreeFromString(contentText)
-        val html = HtmlGenerator(contentText, nodes, flavour)
         val properties = getMarkdownProperties(nodes, contentText)
         val title = properties["title"].orEmpty()
         val description = properties["description"].orEmpty()
+        // If title or description patterns are used, replace the template values.
+        if (contentText.contains(titleTemplatePattern)) {
+            contentText = contentText.replace(titleTemplatePattern, title)
+        }
+        if (contentText.contains(descriptionTemplatePattern)) {
+            contentText = contentText.replace(descriptionTemplatePattern, description)
+        }
+        // Parse markdown content again since content has changed and render it to HTML.
+        val updatedNodes = parser.buildMarkdownTreeFromString(contentText)
+        val html = HtmlGenerator(contentText, updatedNodes, flavour)
         val content = html.generateHtml().removePrefix("<body>").removeSuffix("</body>")
         val result = getHtml(title, description, content)
         output.writeText(result)

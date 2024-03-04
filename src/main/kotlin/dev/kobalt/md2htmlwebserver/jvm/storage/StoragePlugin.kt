@@ -19,6 +19,7 @@
 package dev.kobalt.md2htmlwebserver.jvm.storage
 
 import io.ktor.server.application.*
+import io.ktor.server.application.hooks.*
 import io.ktor.util.*
 
 /** Plugin that provides an instance of storage repository. */
@@ -26,6 +27,21 @@ val StoragePlugin = createApplicationPlugin(
     name = StorageConfiguration.NAME,
     createConfiguration = ::StorageConfiguration
 ) {
-    application.attributes.put(AttributeKey(StorageConfiguration.NAME), StorageRepository(pluginConfig.path!!, pluginConfig.name!!))
+    application.attributes.put(
+        AttributeKey(StorageConfiguration.NAME),
+        StorageRepository(pluginConfig.path!!, pluginConfig.name!!)
+    )
+    // Reload rendering content and start monitoring when server is starting up.
+    on(MonitoringEvent(ApplicationStarted)) { application ->
+        application.storage.apply { reload(); startWatcher() }
+    }
+    // Stop monitoring when server is shutdown.
+    on(MonitoringEvent(ApplicationStopped)) { application ->
+        application.storage.stopWatcher()
+        application.environment.monitor.apply {
+            unsubscribe(ApplicationStarted) {}
+            unsubscribe(ApplicationStopped) {}
+        }
+    }
 }
 

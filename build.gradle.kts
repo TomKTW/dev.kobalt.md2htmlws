@@ -53,6 +53,10 @@ fun DependencyHandler.standardLibrary() {
     implementation(kotlin("stdlib", "1.9.22"))
 }
 
+fun DependencyHandler.fileSystemWatcher() {
+    implementation("io.github.irgaly.kfswatch:kfswatch:1.0.0")
+}
+
 dependencies {
     commandLineInterface()
     datetime()
@@ -61,6 +65,7 @@ dependencies {
     logger()
     markdown()
     standardLibrary()
+    fileSystemWatcher()
 }
 
 tasks {

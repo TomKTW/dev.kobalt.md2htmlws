@@ -101,7 +101,16 @@ suspend fun main(args: Array<String>) {
                         options { _, _ -> CachingOptions(CacheControl.MaxAge(maxAgeSeconds = 0)) }
                     }
                     install(StatusPages) {
-                        exception<Throwable> { call, cause -> cause.printStackTrace() }
+                        exception<Throwable> { call, cause ->
+                            cause.printStackTrace()
+                            runCatching {
+                                call.application.storage.fromStatus(HttpStatusCode.InternalServerError.value).toFile().let {
+                                    call.respond(HttpStatusCode.InternalServerError, LocalFileContent(it))
+                                }
+                            }.onFailure {
+                                call.respond(HttpStatusCode.InternalServerError, "")
+                            }
+                        }
                     }
                     install(Routing) {
                         route("{path...}") {

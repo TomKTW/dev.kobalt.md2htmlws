@@ -35,32 +35,25 @@ import kotlin.io.path.*
 /** Repository that provides access to storage that will be used to render content. */
 @OptIn(ExperimentalPathApi::class)
 class StorageRepository(
-    /** String name of root path directory that will contain all content files. */
-    private val path: String,
-    /** Primary title name of website. */
-    private val name: String
-) {
-
-    /** Main path object that will be used as root for accessing content. It will be created if it doesn't exist. */
-    private val rootPath: Path = Path(path).also { if (it.notExists()) it.createDirectory() }
-
+    /** Main path object that will be used as root for accessing content. */
+    private val rootPath: Path,
     /** Path of HTTP status code pages folder. */
-    private val statusPath = rootPath.resolve("status")
+    private val statusPath: Path,
+    /** Path of HTML file that is used as template to wrap rendered content from markdown file. */
+    private val templatePath: Path,
+    /** Name of markdown file that will be used for rendering HTML file. */
+    private val markdownName: String,
+    /** Name of HTML file that will be rendered from markdown file. */
+    private val htmlName: String,
+    /** Primary title name of website. */
+    private val websiteName: String
+) {
 
     /** Coroutine scope based on I/O dispatcher. */
     private val ioScope = CoroutineScope(Dispatchers.IO)
 
     /** File system watcher instance for monitoring storage content. */
     private val pathWatcher = KfsDirectoryWatcher(ioScope)
-
-    /** Name of markdown file that will be used for rendering HTML file. */
-    private val markdownName = "index.md"
-
-    /** Name of HTML file that will be rendered from markdown file. */
-    private val htmlName = "index.html"
-
-    /** Path of HTML file that is used as template to wrap rendered content from markdown file. */
-    private val templatePath = rootPath.resolve("template.html").requireIsLocatedIn(rootPath)
 
     /** List of all directories and subdirectories from root path. */
     private val rootPathDirectories
@@ -219,7 +212,7 @@ class StorageRepository(
         content: String
     ): String {
         return templatePath.readText()
-            .replace("\$name\$", name)
+            .replace("\$name\$", websiteName)
             .replace("\$title\$", title)
             .replace("\$description\$", description)
             .replace("\$content\$", content)

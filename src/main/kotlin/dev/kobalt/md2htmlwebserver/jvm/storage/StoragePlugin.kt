@@ -21,15 +21,26 @@ package dev.kobalt.md2htmlwebserver.jvm.storage
 import io.ktor.server.application.*
 import io.ktor.server.application.hooks.*
 import io.ktor.util.*
+import kotlin.io.path.Path
+import kotlin.io.path.createDirectory
+import kotlin.io.path.notExists
 
 /** Plugin that provides an instance of storage repository. */
 val StoragePlugin = createApplicationPlugin(
     name = StorageConfiguration.NAME,
     createConfiguration = ::StorageConfiguration
 ) {
+    val primaryPath = Path(pluginConfig.path!!).also { if (it.notExists()) it.createDirectory() }
     application.attributes.put(
         AttributeKey(StorageConfiguration.NAME),
-        StorageRepository(pluginConfig.path!!, pluginConfig.name!!)
+        StorageRepository(
+            rootPath = primaryPath,
+            statusPath = primaryPath.resolve("status"),
+            templatePath = primaryPath.resolve("template.html"),
+            markdownName = "index.md",
+            htmlName = "index.html",
+            websiteName = pluginConfig.name!!
+        )
     )
     // Reload rendering content and start monitoring when server is starting up.
     on(MonitoringEvent(ApplicationStarted)) { application ->

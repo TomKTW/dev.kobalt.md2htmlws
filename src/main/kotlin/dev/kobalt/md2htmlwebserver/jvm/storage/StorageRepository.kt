@@ -45,7 +45,7 @@ class StorageRepository(
 
     fun fromPath(pathString: String): Path? {
         val path = rootPath.resolve(pathString).requireIsLocatedIn(rootPath)
-        // Return null if this pathe doesn't exist.
+        // Return null if this path doesn't exist.
         if (!path.exists()) return null
         // If this is a folder, then it's assumed to be a web page to be displayed.
         if (path.isDirectory()) {
@@ -101,6 +101,43 @@ class StorageRepository(
             // Any other result should be an exception.
             throw Exception()
         }
+    }
+
+    fun fromStatus(code: Int): Path? {
+        val path = rootPath.resolve("$code.md").requireIsLocatedIn(rootPath)
+        // Markdown content file to be rendered.
+        val markdownPath = path
+        // If markdown content file exists, proceed with rendering content. Otherwise, throw an exception.
+        if (!markdownPath.exists() && !markdownPath.isRegularFile()) throw Exception()
+        // HTML rendered content file from markdown.
+        val htmlPath = rootPath.resolve("$code.html").requireIsLocatedIn(rootPath)
+        // JSON properties file for comparing rendered and current markdown content.
+        val jsonPath = rootPath.resolve("$code.json").requireIsLocatedIn(rootPath)
+        // Properties containing information for markdown file since last rendering process.
+        val properties = jsonPath.takeIf { it.exists() }?.let { Json.parseToJsonElement(it.readText()).jsonObject }
+        // Size of markdown content file.
+        val markdownSize = markdownPath.fileSize()
+        // Last modified date time of markdown content file.
+        val markdownDate = markdownPath.getLastModifiedTime().toInstant().toKotlinInstant()
+        // Size of markdown content file since last rendering process.
+        val propertiesSize = properties?.get("size")?.jsonPrimitive?.content?.toLongOrNull()
+        // Last modified date time of markdown content file since last rendering process.
+        val propertiesDate = properties?.get("date")?.jsonPrimitive?.content?.toInstant()
+        // Check if current and rendered version of markdown files match.
+        val sizeMatches = markdownSize == propertiesSize
+        // Check if current and rendered modification dates of markdown files match.
+        val dateMatches = markdownDate == propertiesDate
+        // Check if HTML should be generated from markdown file.
+        // Only one of following conditions needs to apply:
+        // - HTML rendered file doesn't exist
+        // - JSON properties file doesn't exist
+        // - Sizes don't match
+        // - Last modified dates don't match
+        val shouldGenerateHtml = !htmlPath.exists() || !jsonPath.exists() || !sizeMatches || !dateMatches
+        // If any of those conditions were met, an HTML file will be rendered from markdown file.
+        if (shouldGenerateHtml) convertMarkdown(markdownPath, htmlPath)
+        // Return HTML rendered file.
+        return htmlPath
     }
 
     /** Reads markdown content from input path and stores HTML content into output path. */

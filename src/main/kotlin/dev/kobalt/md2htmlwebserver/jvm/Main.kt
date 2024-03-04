@@ -26,6 +26,7 @@ import io.ktor.http.content.*
 import io.ktor.server.application.*
 import io.ktor.server.cio.*
 import io.ktor.server.engine.*
+import io.ktor.server.http.content.*
 import io.ktor.server.plugins.cachingheaders.*
 import io.ktor.server.plugins.callloging.*
 import io.ktor.server.plugins.compression.*
@@ -106,8 +107,14 @@ suspend fun main(args: Array<String>) {
                         route("{path...}") {
                             get {
                                 call.parameters.getAll("path")?.joinToString("/")?.let { path ->
-                                    application.storage.fromPath(path)?.toFile()?.let { call.respondFile(it) }
-                                } ?: call.respond(HttpStatusCode.NotFound)
+                                    application.storage.fromPath(path)?.toFile()?.let {
+                                        call.respondFile(it)
+                                    }
+                                } ?: run {
+                                    application.storage.fromStatus(HttpStatusCode.NotFound.value)?.toFile()?.let {
+                                        call.respond(HttpStatusCode.NotFound, LocalFileContent(it))
+                                    }
+                                }
                             }
                         }
                     }

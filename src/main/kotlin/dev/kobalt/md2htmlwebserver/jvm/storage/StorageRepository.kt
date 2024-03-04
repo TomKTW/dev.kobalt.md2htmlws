@@ -24,6 +24,7 @@ import io.github.irgaly.kfswatch.KfsEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.getTextInNode
 import org.intellij.markdown.flavours.commonmark.CommonMarkFlavourDescriptor
 import org.intellij.markdown.html.HtmlGenerator
@@ -153,59 +154,62 @@ class StorageRepository(
 
     /** Reads markdown content from input path and stores HTML content into output path. */
     private fun convertMarkdown(input: Path, output: Path) {
+        // Prepare parser for markdown content.
+        val flavour = CommonMarkFlavourDescriptor()
+        val parser = MarkdownParser(flavour)
+        // Read text from input path.
         val contentText = input.readText().let { content ->
-            if (content.contains("[template:dirlist]:.")) {
+            // If the template directory list pattern exists in content, convert it.
+            val templatePattern = "[template:dirlist]:."
+            if (content.contains(templatePattern)) {
+                // Get a list of path directories that contains markdown file.
                 val directoryPathList = input.parent.listDirectoryEntries().filter { listPath ->
                     listPath.isDirectory() && listPath.resolve(markdownName).exists()
                 }.sortedBy { it.name }
-
-                val flavour = CommonMarkFlavourDescriptor()
+                // Combine all of those entries into a markdown string that will be processed later.
                 val result = directoryPathList.joinToString("") { listPath ->
-                    // Markdown content file to be rendered.
                     val markdownPath = listPath.resolve(markdownName)
                     val text = markdownPath.readText()
-                    val parser = MarkdownParser(flavour).buildMarkdownTreeFromString(text)
-
                     val href = listPath.name
-                    val title = runCatching {
-                        parser.children.get(0).children.get(4).getTextInNode(text).toString().removePrefix("\"")
-                            .removeSuffix("\"")
-                    }.getOrNull().orEmpty()
-                    val description = runCatching {
-                        parser.children.get(2).children.get(4).getTextInNode(text).toString().removePrefix("\"")
-                            .removeSuffix("\"")
-                    }.getOrNull().orEmpty()
-                    "# [$title](./$href/)\n\n$description\n\n"
+                    val nodes = parser.buildMarkdownTreeFromString(text)
+                    val properties = getMarkdownProperties(nodes, text)
+                    val title = properties["title"].orEmpty()
+                    val description = properties["description"].orEmpty()
+                    "# [${title}](./$href/)\n\n${description}\n\n"
                 }
-                content.replace("[template:dirlist]:.", result)
+                content.replace(templatePattern, result)
             } else {
                 content
             }
         }
-
-        val flavour = CommonMarkFlavourDescriptor()
-        val parser = MarkdownParser(flavour).buildMarkdownTreeFromString(contentText)
-        val html = HtmlGenerator(contentText, parser, flavour)
-
-        val title = runCatching {
-            parser.children.get(0).children.get(4).getTextInNode(contentText).toString().removePrefix("\"")
-                .removeSuffix("\"")
-        }.getOrNull().orEmpty()
-        val description = runCatching {
-            parser.children.get(2).children.get(4).getTextInNode(contentText).toString().removePrefix("\"")
-                .removeSuffix("\"")
-        }.getOrNull().orEmpty()
-
-        val result = getHtml(
-            title,
-            description,
-            html.generateHtml().removePrefix("<body>").removeSuffix("</body>")
-        )
-        println("Generated")
+        // Parse content text to nodes and convert it to HTML in the end for writing it to output path.
+        val nodes = parser.buildMarkdownTreeFromString(contentText)
+        val html = HtmlGenerator(contentText, nodes, flavour)
+        val properties = getMarkdownProperties(nodes, contentText)
+        val title = properties["title"].orEmpty()
+        val description = properties["description"].orEmpty()
+        val content = html.generateHtml().removePrefix("<body>").removeSuffix("</body>")
+        val result = getHtml(title, description, content)
         output.writeText(result)
     }
 
-    /** Returns fully rendered HTML content, where the content has been put in main article element.*/
+    /** Returns markdown properties from content nodes. */
+    private fun getMarkdownProperties(nodes: ASTNode, text: String): Map<String, String> {
+        // Note: This basically gets first two lines in markdown and tries to get their values.
+        // TODO: Figure out this part a bit better to make it more flexible to use.
+        return mapOf(
+            "title" to runCatching {
+                nodes.children[0].children[4].getTextInNode(text).toString().removePrefix("\"")
+                    .removeSuffix("\"")
+            }.getOrNull().orEmpty(),
+            "description" to runCatching {
+                nodes.children[2].children[4].getTextInNode(text).toString().removePrefix("\"")
+                    .removeSuffix("\"")
+            }.getOrNull().orEmpty()
+        )
+    }
+
+    /** Returns fully rendered and formatted HTML content, where the content has been put in main article element. */
     private fun getHtml(
         title: String,
         description: String,

@@ -21,7 +21,7 @@ fun DependencyHandler.commandLineInterface() {
 }
 
 fun DependencyHandler.datetime() {
-    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.5.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.0-RC.2")
 }
 
 fun DependencyHandler.httpServer() {

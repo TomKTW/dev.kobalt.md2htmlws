@@ -18,12 +18,18 @@
 
 package dev.kobalt.md2htmlwebserver.jvm.storage
 
+import dev.kobalt.md2htmlwebserver.jvm.extension.ifLet
 import dev.kobalt.md2htmlwebserver.jvm.extension.resolveAndRequireIsLocatedInCurrentPath
+import dev.kobalt.md2htmlwebserver.jvm.extension.toInstantOrNull
 import io.github.irgaly.kfswatch.KfsDirectoryWatcher
 import io.github.irgaly.kfswatch.KfsEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.datetime.*
+import kotlinx.datetime.format.char
+import org.intellij.markdown.MarkdownElementTypes
+import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.getTextInNode
 import org.intellij.markdown.flavours.commonmark.CommonMarkFlavourDescriptor
@@ -32,6 +38,7 @@ import org.intellij.markdown.parser.MarkdownParser
 import org.jsoup.Jsoup
 import java.nio.file.Path
 import kotlin.io.path.*
+
 
 /** Repository that provides access to storage that will be used to render content. */
 @OptIn(ExperimentalPathApi::class)
@@ -62,12 +69,14 @@ class StorageRepository(
 
     /** Reloads rendering all markdown pages to HTML. */
     fun reload() {
-        rootPathDirectories.forEach { path ->
-            val markdownPath = path.resolve(markdownName)
-            if (!markdownPath.exists()) return@forEach
-            val htmlPath = path.resolve(htmlName)
-            convertMarkdown(markdownPath, htmlPath)
-        }
+        runCatching {
+            rootPathDirectories.forEach { path ->
+                val markdownPath = path.resolve(markdownName)
+                if (!markdownPath.exists()) return@forEach
+                val htmlPath = path.resolve(htmlName)
+                convertMarkdown(markdownPath, htmlPath)
+            }
+        }.onFailure { it.printStackTrace() }
     }
 
     /** Starts watching all directories in root path to monitor changes in markdown files for reloading. */
@@ -151,70 +160,126 @@ class StorageRepository(
         // Return HTML rendered file.
         return htmlPath
     }
+
     /** Reads markdown content from input path and stores HTML content into output path. */
     private fun convertMarkdown(input: Path, output: Path) {
         // Prepare parser for markdown content.
         val flavour = CommonMarkFlavourDescriptor()
         val parser = MarkdownParser(flavour)
-        // Template patterns for conversion.
-        val titleTemplatePattern = "[template:title]:."
-        val descriptionTemplatePattern = "[template:description]:."
-        val dirListTemplatePattern = "[template:dirlist]:."
         // Read text from input path.
-        var contentText = input.readText()
-        // If the template directory list pattern exists in content, convert it.
-        if (contentText.contains(dirListTemplatePattern)) {
-            // Get a list of path directories that contains markdown file.
-            val directoryPathList = input.parent.listDirectoryEntries().filter { listPath ->
-                listPath.isDirectory() && listPath.resolve(markdownName).exists()
-            }.sortedBy { it.name }
-            // Combine all of those entries into a markdown string that will be processed later.
-            val result = directoryPathList.joinToString("") { listPath ->
-                val markdownPath = listPath.resolve(markdownName)
-                val text = markdownPath.readText()
-                val href = listPath.name
-                val nodes = parser.buildMarkdownTreeFromString(text)
-                val properties = getMarkdownProperties(nodes, text)
-                val title = properties["title"].orEmpty()
-                val description = properties["description"].orEmpty()
-                "# [${title}](./$href/)\n\n${description}\n\n"
-            }
-            contentText = contentText.replace(dirListTemplatePattern, result)
-        }
-        // Parse content text to nodes and convert it to HTML in the end for writing it to output path.
-        val nodes = parser.buildMarkdownTreeFromString(contentText)
-        val properties = getMarkdownProperties(nodes, contentText)
+        val contentText = input.readText()
+        // Get properties from parsed nodes to be used in rendered content,
+        val properties = getMarkdownProperties(parser.buildMarkdownTreeFromString(contentText), contentText)
         val title = properties["title"].orEmpty()
         val description = properties["description"].orEmpty()
-        // If title or description patterns are used, replace the template values.
-        if (contentText.contains(titleTemplatePattern)) {
-            contentText = contentText.replace(titleTemplatePattern, title)
-        }
-        if (contentText.contains(descriptionTemplatePattern)) {
-            contentText = contentText.replace(descriptionTemplatePattern, description)
-        }
-        // Parse markdown content again since content has changed and render it to HTML.
-        val updatedNodes = parser.buildMarkdownTreeFromString(contentText)
-        val html = HtmlGenerator(contentText, updatedNodes, flavour)
+        // Process the template parts in markdown content.
+        val processedText = processMarkdownTemplates(input, contentText, properties)
+        // Parse processed markdown content to prepare it for HTML rendering.
+        val nodes = parser.buildMarkdownTreeFromString(processedText)
+        val html = HtmlGenerator(processedText, nodes, flavour)
+        // Remove body HTML part since this will be placed in main article element instead.
         val content = html.generateHtml().removePrefix("<body>").removeSuffix("</body>")
         val result = getHtml(title, description, content)
+        // Write final HTML result to output path.
         output.writeText(result)
     }
 
-    /** Returns markdown properties from content nodes. */
+    /** Returns markdown properties from content nodes. This involves elements with pattern '[metadata:key]:. "value"'. */
     private fun getMarkdownProperties(nodes: ASTNode, text: String): Map<String, String> {
-        // Note: This basically gets first two lines in markdown and tries to get their values.
-        // TODO: Figure out this part a bit better to make it more flexible to use.
-        return mapOf(
-            "title" to runCatching {
-                nodes.children[0].children[4].getTextInNode(text).toString().removePrefix("\"")
-                    .removeSuffix("\"")
-            }.getOrNull().orEmpty(),
-            "description" to runCatching {
-                nodes.children[2].children[4].getTextInNode(text).toString().removePrefix("\"")
-                    .removeSuffix("\"")
-            }.getOrNull().orEmpty()
-        )
+        return nodes.children.filter { node ->
+            // Check if node matches comment-like link type.
+            node.children.size == 5 && node.type == MarkdownElementTypes.LINK_DEFINITION
+                    && node.children[0].type == MarkdownElementTypes.LINK_LABEL
+                    && node.children[1].type == MarkdownTokenTypes.WHITE_SPACE
+                    && node.children[2].type == MarkdownElementTypes.LINK_DESTINATION
+                    && node.children[3].type == MarkdownTokenTypes.WHITE_SPACE
+                    && node.children[4].type == MarkdownElementTypes.LINK_TITLE
+                    && node.children[0].getTextInNode(text).startsWith("[metadata:")
+        }.associate {
+            // Get key and value from properties and store them into a map.
+            val key = it.children[0].getTextInNode(text).removePrefix("[metadata:").removeSuffix("]")
+            val value = it.children[4].getTextInNode(text).removeSurrounding("\"")
+            key.toString() to value.toString()
+        }
+    }
+
+    /** Returns a string of markdown content that was processed to replace template elements with actual values. */
+    private fun processMarkdownTemplates(input: Path, text: String, properties: Map<String, String>): String {
+        var resultText = text
+        listOf(
+            // Convert title templates.
+            "[template:title]" to {
+                properties["title"].orEmpty()
+            },
+            // Convert description templates.
+            "[template:description]" to {
+                properties["description"].orEmpty()
+            },
+            // Convert timestamp templates. Blank if either timestamp is missing.
+            "[template:timestamp]" to {
+                val createTimestamp = properties["create-timestamp"]?.takeIf { it.isNotEmpty() }?.toInstantOrNull()
+                val updateTimestamp = properties["update-timestamp"]?.takeIf { it.isNotEmpty() }?.toInstantOrNull()
+                ifLet(createTimestamp, updateTimestamp) { create, update ->
+                    getTimestampTemplate(create, update)
+                }.orEmpty()
+            },
+            // Convert directory list template to generate a list of subpages.
+            "[template:dirlist]" to {
+                // Get a list of path directories that contains markdown file.
+                val directoryPathList = input.parent.listDirectoryEntries().filter { listPath ->
+                    listPath.isDirectory() && listPath.resolve(markdownName).exists()
+                }.sortedBy { it.name }
+                // Prepare parser.
+                val flavour = CommonMarkFlavourDescriptor()
+                val parser = MarkdownParser(flavour)
+                // Combine all of those entries into a markdown string that will be processed later.
+                val list = directoryPathList.map { listPath ->
+                    val listMarkdownPath = listPath.resolve(markdownName)
+                    val listText = listMarkdownPath.readText()
+                    val listNodes = parser.buildMarkdownTreeFromString(listText)
+                    val listProperties = getMarkdownProperties(listNodes, listText)
+                    val href = listPath.name
+                    val title = listProperties["title"]?.takeIf { it.isNotEmpty() }?.let { "## [${it}](./$href/)" }
+                    val description = listProperties["description"]?.takeIf { it.isNotEmpty() }
+                    val createTimestamp =
+                        listProperties["create-timestamp"]?.takeIf { it.isNotEmpty() }?.toInstantOrNull()
+                    val updateTimestamp =
+                        listProperties["update-timestamp"]?.takeIf { it.isNotEmpty() }?.toInstantOrNull()
+                    val timestamp = ifLet(createTimestamp, updateTimestamp) { create, update ->
+                        getTimestampTemplate(create, update)
+                    }
+                    // Provide timestamp for sorting out the list.
+                    listOfNotNull(title, timestamp, description).joinToString(
+                        separator = "\n\n",
+                        postfix = "\n\n"
+                    ) to createTimestamp
+                }.sortedByDescending { it.second }
+                list.joinToString("") { it.first }
+            }
+        ).forEach { (pattern, conversion) ->
+            if (text.contains(pattern)) resultText = resultText.replace(pattern, conversion.invoke())
+        }
+        return resultText
+    }
+
+    /** Returns timestamp template as HTML with time element containing timestamp information.*/
+    private fun getTimestampTemplate(createTimestamp: Instant, updateTimestamp: Instant): String {
+        val formatShort = LocalDateTime.Format {
+            year(); char('-'); monthNumber(); char('-'); dayOfMonth()
+        }
+        val formatFull = LocalDateTime.Format {
+            year(); char('-'); monthNumber(); char('-'); dayOfMonth()
+            char(' ');hour();char(':');minute();char(':');second();char('.');secondFraction()
+        }
+        val createTimestampStringShort =
+            createTimestamp.toLocalDateTime(TimeZone.UTC).format(formatShort).let { "*$it*" }
+        val createTimestampStringFull =
+            createTimestamp.toLocalDateTime(TimeZone.UTC).format(formatFull).let { "Created at: $it" }
+        val updateTimestampStringFull =
+            updateTimestamp.toLocalDateTime(TimeZone.UTC).format(formatFull).let { "Updated at: $it" }
+        val newLine = "&#10;"
+        val tooltip = "$createTimestampStringFull$newLine$updateTimestampStringFull".removeSurrounding(newLine)
+        return createTimestampStringShort.let { "<time title=\"$tooltip\">$createTimestampStringShort</time>" }
     }
 
     /** Returns fully rendered and formatted HTML content, where the content has been put in main article element. */

@@ -101,5 +101,6 @@ gradle-app.setting
 .classpath
 
 config.json
+nginx.conf
 
 /storage/

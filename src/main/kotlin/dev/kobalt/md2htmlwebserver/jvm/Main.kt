@@ -18,9 +18,10 @@
 
 package dev.kobalt.md2htmlwebserver.jvm
 
-import dev.kobalt.md2htmlwebserver.jvm.extension.ifLet
+import dev.kobalt.md2htmlwebserver.jvm.storage.StorageConfigEntity
 import dev.kobalt.md2htmlwebserver.jvm.storage.StoragePlugin
 import dev.kobalt.md2htmlwebserver.jvm.storage.storage
+import dev.kobalt.md2htmlwebserver.jvm.storage.toStorageConfigEntity
 import io.ktor.http.*
 import io.ktor.http.content.*
 import io.ktor.server.application.*
@@ -38,17 +39,19 @@ import io.ktor.server.routing.*
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.coroutines.*
-import kotlinx.serialization.json.*
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import java.util.*
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import kotlin.io.path.Path
 import kotlin.io.path.readText
+import kotlin.io.path.writeText
 
 suspend fun main(args: Array<String>) {
     // Apply timezone of runtime to UTC.
     TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
-
     // Parse given arguments.
     val parser = ArgParser(
         programName = "server"
@@ -59,68 +62,87 @@ suspend fun main(args: Array<String>) {
         shortName = "conf",
         description = "Path of configuration JSON file"
     )
+    val nginxConfigPath by parser.option(
+        type = ArgType.String,
+        fullName = "nginxConfigPath",
+        shortName = "nxcf",
+        description = "Path of generated nginx configuration file"
+    )
     parser.parse(args)
+    //  Configure and start servers from configuration file.
     val mainScope = CoroutineScope(Dispatchers.Main)
-    configPath?.let { Json.parseToJsonElement(Path(it).readText()).jsonArray }?.mapNotNull { element ->
-        ifLet(
-            element.jsonObject["port"]?.jsonPrimitive?.intOrNull,
-            element.jsonObject["host"]?.jsonPrimitive?.contentOrNull,
-            element.jsonObject["path"]?.jsonPrimitive?.contentOrNull,
-            element.jsonObject["name"]?.jsonPrimitive?.contentOrNull
-        ) { port, host, path, name ->
-            mainScope.async(
-                context = Dispatchers.IO + NonCancellable,
-                start = CoroutineStart.LAZY
-            ) {
-                embeddedServer(CIO, port, host) {
-                    install(ForwardedHeaders)
-                    install(DefaultHeaders)
-                    install(CallLogging)
-                    install(Compression)
-                    install(StoragePlugin) {
-                        this.path = path
-                        this.name = name
+    val configList = configPath?.let {
+        Json.parseToJsonElement(Path(it).readText()).jsonArray
+    }?.mapNotNull {
+        it.jsonObject.toStorageConfigEntity()
+    }.orEmpty()
+    // Generate nginx configuration if path was set for it.
+    nginxConfigPath?.let { path ->
+        Path(path).writeText(configList.joinToString("\n\n") { it.toNginxConfig() })
+    }
+    // Prepare and start servers.
+    configList.map { config ->
+        mainScope.async(
+            context = Dispatchers.IO + NonCancellable,
+            start = CoroutineStart.LAZY
+        ) {
+            setupServer(config).also {
+                Runtime.getRuntime().addShutdownHook(thread(start = false) {
+                    it.stop(0, 10, TimeUnit.SECONDS)
+                })
+            }.also {
+                it.start(true)
+            }
+        }
+    }.awaitAll()
+}
+
+/** Returns an instance of server with configuration from given entity .*/
+fun setupServer(config: StorageConfigEntity) = embeddedServer(CIO, config.port, config.host) {
+    install(ForwardedHeaders)
+    install(DefaultHeaders)
+    install(CallLogging)
+    install(Compression)
+    install(StoragePlugin) {
+        this.path = config.path
+        this.name = config.title
+    }
+    install(IgnoreTrailingSlash)
+    install(CachingHeaders) {
+        options { _, _ -> CachingOptions(CacheControl.MaxAge(maxAgeSeconds = 0)) }
+    }
+    install(StatusPages) {
+        exception<Throwable> { call, cause ->
+            cause.printStackTrace()
+            runCatching {
+                call.application.storage.fromStatus(HttpStatusCode.InternalServerError.value).toFile()
+                    .let {
+                        call.respond(HttpStatusCode.InternalServerError, LocalFileContent(it))
                     }
-                    install(IgnoreTrailingSlash)
-                    install(CachingHeaders) {
-                        options { _, _ -> CachingOptions(CacheControl.MaxAge(maxAgeSeconds = 0)) }
+            }.onFailure {
+                call.respond(HttpStatusCode.InternalServerError, "")
+            }
+        }
+    }
+    install(Routing) {
+        route("{path...}") {
+            get {
+                call.parameters.getAll("path")?.joinToString("/")?.let { path ->
+                    application.storage.fromPath(path)?.toFile()?.let {
+                        call.respondFile(it)
                     }
-                    install(StatusPages) {
-                        exception<Throwable> { call, cause ->
-                            cause.printStackTrace()
-                            runCatching {
-                                call.application.storage.fromStatus(HttpStatusCode.InternalServerError.value).toFile()
-                                    .let {
-                                        call.respond(HttpStatusCode.InternalServerError, LocalFileContent(it))
-                                    }
-                            }.onFailure {
-                                call.respond(HttpStatusCode.InternalServerError, "")
-                            }
-                        }
+                } ?: run {
+                    application.storage.fromStatus(HttpStatusCode.NotFound.value).toFile().let {
+                        call.respond(HttpStatusCode.NotFound, LocalFileContent(it))
                     }
-                    install(Routing) {
-                        route("{path...}") {
-                            get {
-                                call.parameters.getAll("path")?.joinToString("/")?.let { path ->
-                                    application.storage.fromPath(path)?.toFile()?.let {
-                                        call.respondFile(it)
-                                    }
-                                } ?: run {
-                                    application.storage.fromStatus(HttpStatusCode.NotFound.value).toFile().let {
-                                        call.respond(HttpStatusCode.NotFound, LocalFileContent(it))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }.also {
-                    Runtime.getRuntime().addShutdownHook(thread(start = false) {
-                        it.stop(0, 10, TimeUnit.SECONDS)
-                    })
-                }.also {
-                    it.start(true)
                 }
             }
         }
-    }?.awaitAll()
+    }
+}.also {
+    Runtime.getRuntime().addShutdownHook(thread(start = false) {
+        it.stop(0, 10, TimeUnit.SECONDS)
+    })
+}.also {
+    it.start(true)
 }

@@ -42,13 +42,14 @@ val StoragePlugin = createApplicationPlugin(
             websiteName = pluginConfig.name!!
         )
     )
-    // Reload rendering content and start monitoring when server is starting up.
+    // Start monitoring when server is starting up.
     on(MonitoringEvent(ApplicationStarted)) { application ->
-        application.storage.apply { reload(); startWatcher() }
+        application.storage.apply { startWatcher() }
     }
     // Stop monitoring when server is shutdown.
     on(MonitoringEvent(ApplicationStopped)) { application ->
-        application.storage.stopWatcher()
+        application.storage.apply { stopWatcher() }
+        // Stop application monitoring events.
         application.environment.monitor.apply {
             unsubscribe(ApplicationStarted) {}
             unsubscribe(ApplicationStopped) {}

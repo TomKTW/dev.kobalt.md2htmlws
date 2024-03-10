@@ -68,7 +68,7 @@ class StorageRepository(
         get() = rootPath.walk(PathWalkOption.INCLUDE_DIRECTORIES).filter { it.isDirectory() }
 
     /** Reloads rendering all markdown pages to HTML. */
-    fun reload() {
+    private fun reload() {
         runCatching {
             rootPathDirectories.forEach { path ->
                 val markdownPath = path.resolve(markdownName)
@@ -79,9 +79,22 @@ class StorageRepository(
         }.onFailure { it.printStackTrace() }
     }
 
-    /** Starts watching all directories in root path to monitor changes in markdown files for reloading. */
+    /** Clears all rendered HTML pages. */
+    private fun clear() {
+        runCatching {
+            rootPathDirectories.forEach { path ->
+                val htmlPath = path.resolve(htmlName)
+                println(htmlPath)
+                htmlPath.deleteIfExists()
+            }
+        }.onFailure { it.printStackTrace() }
+    }
+
+
+    /** Reloads rendering markdown pages and starts watching all markdown content changes. */
     fun startWatcher() {
         ioScope.launch {
+            reload()
             // Add all directories for watching.
             rootPathDirectories.forEach { pathWatcher.add(it.pathString) }
             // Capture any change within directories.
@@ -104,11 +117,12 @@ class StorageRepository(
         }
     }
 
-    /** Stops watching all directories in root path. */
+    /** Stops watching all directories in root path and clears rendered HTML pages. */
     fun stopWatcher() {
         ioScope.launch {
             pathWatcher.removeAll()
             pathWatcher.close()
+            clear()
         }
     }
 

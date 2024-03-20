@@ -1,5 +1,5 @@
 /*
- * dev.kobalt.md2htmlwebserver
+ * dev.kobalt.md2htmlws
  * Copyright (C) 2024 Tom.K
  *
  * This program is free software: you can redistribute it and/or modify
@@ -16,10 +16,17 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package dev.kobalt.md2htmlwebserver.jvm.storage
+package dev.kobalt.md2htmlws.web.storage
 
-import io.ktor.server.application.*
-import io.ktor.util.*
+/** Configuration for storage repository. */
+class StorageConfiguration(
+    /** Path location of content to be stored. */
+    var path: String? = null,
+    var name: String? = null
+) {
 
-/** Instance of storage repository. */
-val Application.storage: StorageRepository get() = attributes[AttributeKey(StorageConfiguration.NAME)]
+    companion object {
+        const val NAME = "Storage"
+    }
+
+}

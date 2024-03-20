@@ -1,5 +1,5 @@
 /*
- * dev.kobalt.md2htmlwebserver
+ * dev.kobalt.md2htmlws
  * Copyright (C) 2024 Tom.K
  *
  * This program is free software: you can redistribute it and/or modify
@@ -16,11 +16,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package dev.kobalt.md2htmlwebserver.jvm.storage
+package dev.kobalt.md2htmlws.web.storage
 
-import dev.kobalt.md2htmlwebserver.jvm.extension.ifLet
-import dev.kobalt.md2htmlwebserver.jvm.extension.resolveAndRequireIsLocatedInCurrentPath
-import dev.kobalt.md2htmlwebserver.jvm.extension.toInstantOrNull
+import dev.kobalt.md2htmlws.web.extension.ifLet
+import dev.kobalt.md2htmlws.web.extension.resolveAndRequireIsLocatedInCurrentPath
+import dev.kobalt.md2htmlws.web.extension.toInstantOrNull
 import io.github.irgaly.kfswatch.KfsDirectoryWatcher
 import io.github.irgaly.kfswatch.KfsEvent
 import kotlinx.coroutines.CoroutineScope

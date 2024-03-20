@@ -1,5 +1,5 @@
 /*
- * dev.kobalt.md2htmlwebserver
+ * dev.kobalt.md2htmlws
  * Copyright (C) 2024 Tom.K
  *
  * This program is free software: you can redistribute it and/or modify
@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package dev.kobalt.md2htmlwebserver.jvm.extension
+package dev.kobalt.md2htmlws.web.extension
 
 import java.nio.file.Path
 

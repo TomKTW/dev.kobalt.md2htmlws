@@ -1,5 +1,5 @@
 /*
- * dev.kobalt.md2htmlwebserver
+ * dev.kobalt.md2htmlws
  * Copyright (C) 2024 Tom.K
  *
  * This program is free software: you can redistribute it and/or modify
@@ -16,12 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package dev.kobalt.md2htmlwebserver.jvm
+package dev.kobalt.md2htmlws.web
 
-import dev.kobalt.md2htmlwebserver.jvm.storage.StorageConfigEntity
-import dev.kobalt.md2htmlwebserver.jvm.storage.StoragePlugin
-import dev.kobalt.md2htmlwebserver.jvm.storage.storage
-import dev.kobalt.md2htmlwebserver.jvm.storage.toStorageConfigEntity
+import dev.kobalt.md2htmlws.web.storage.StorageConfigEntity
+import dev.kobalt.md2htmlws.web.storage.StoragePlugin
+import dev.kobalt.md2htmlws.web.storage.storage
+import dev.kobalt.md2htmlws.web.storage.toStorageConfigEntity
 import io.ktor.http.*
 import io.ktor.http.content.*
 import io.ktor.server.application.*
@@ -50,8 +50,6 @@ import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
 suspend fun main(args: Array<String>) {
-    // Apply timezone of runtime to UTC.
-    TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
     // Parse given arguments.
     val parser = ArgParser(
         programName = "server"

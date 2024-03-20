@@ -1,5 +1,5 @@
 /*
- * dev.kobalt.md2htmlwebserver
+ * dev.kobalt.md2htmlws
  * Copyright (C) 2024 Tom.K
  *
  * This program is free software: you can redistribute it and/or modify
@@ -16,11 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package dev.kobalt.md2htmlwebserver.jvm.extension
+package dev.kobalt.md2htmlws.web.storage
 
-import kotlinx.datetime.Instant
+import io.ktor.server.application.*
+import io.ktor.util.*
 
-/** Returns instant date time value from string if it matches its default pattern. Otherwise, returns null. */
-fun String.toInstantOrNull(): Instant? {
-    return runCatching { Instant.parse(this) }.onFailure { it.printStackTrace() }.getOrNull()
-}
+/** Instance of storage repository. */
+val Application.storage: StorageRepository get() = attributes[AttributeKey(StorageConfiguration.NAME)]

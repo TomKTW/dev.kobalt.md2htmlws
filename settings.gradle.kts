@@ -1,2 +1,2 @@
-rootProject.name = "md2htmlwebserver"
+rootProject.name = "md2htmlws"
 

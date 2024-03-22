@@ -107,7 +107,7 @@ fun setupServer(config: StorageConfigEntity) = embeddedServer(CIO, config.port, 
     }
     install(IgnoreTrailingSlash)
     install(CachingHeaders) {
-        options { _, _ -> CachingOptions(CacheControl.MaxAge(maxAgeSeconds = 0)) }
+        options { _, _ -> CachingOptions(CacheControl.MaxAge(maxAgeSeconds = 60 * 60)) }
     }
     install(StatusPages) {
         exception<Throwable> { call, cause ->

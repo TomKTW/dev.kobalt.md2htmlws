@@ -70,7 +70,7 @@ dependencies {
 
 tasks {
     named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
-        archiveFileName.set("md2htmlws.jar")
+        archiveFileName.set("md2htmlws.web.jar")
         mergeServiceFiles()
         manifest {
             attributes("Main-Class" to "dev.kobalt.md2htmlws.web.MainKt")

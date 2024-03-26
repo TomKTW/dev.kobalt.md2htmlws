@@ -304,7 +304,7 @@ class StorageRepository(
     ): String {
         return templatePath.readText()
             .replace("\$name\$", websiteName)
-            .replace("\$title\$", title)
+            .replace("\$title\$", title.takeIf { it.isNotEmpty() }?.let { "$it - $websiteName"  } ?: websiteName)
             .replace("\$description\$", description)
             .replace("\$content\$", content)
             .let { Jsoup.parse(it).toString() }

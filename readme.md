@@ -3,6 +3,8 @@ Markdown to HTML Web Server
 
 This program provides a web server that will host content from markdown files converted to their rendered HTML equivalents and its resources.
 
+More information is available [here](https://md2htmlws.kobalt.dev).
+
 ## Requirements
 
 - Java 17 Runtime
